@@ -41,6 +41,7 @@
   <ItemGroup />
   <ItemGroup>
     <Compile Include="src\PacketResender.cs" />
+    <Compile Include="src\packets\PacketEncryptor.cs" />
     <Compile Include="src\ReliablePackets.cs" />
     <Compile Include="src\NetworkPeer.cs" />
     <Compile Include="src\PackectsUsedRegistry.cs" />
