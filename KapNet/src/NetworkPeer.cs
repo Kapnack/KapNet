@@ -8,18 +8,20 @@ namespace KapNet.src
     public abstract class NetworkPeer<ClientKey> : IReceiveData, INetworkPeer
     {
         protected delegate void PacketTypeDelegate(NetworkPacket networkPacket);
-        private delegate void SendPacketMetaDataDelegate(NetworkPacket networkPacket, byte[] data);
-        private delegate bool RecivePacketMetaDataDelegate(NetworkPacket networkPacket);
+        private delegate void SendPacketMetaDataDelegate(NetworkPacket networkPacket, ref byte[] data);
+        private delegate bool RecivePacketMetaDataDelegate(ref NetworkPacket networkPacket);
 
         protected const uint NULL_NETWORKPEER = 0;
 
         PacketResender packetResender;
+        public PacketEncryptor packetEncryptor;
 
         private List<byte[]> cryticalPackets = new List<byte[]>();
 
         private Dictionary<ClientKey, Dictionary<PacketType, SortedDictionary<uint, NetworkPacket>>> ordenablePackets = new Dictionary<ClientKey, Dictionary<PacketType, SortedDictionary<uint, NetworkPacket>>>();
         private Dictionary<ClientKey, Dictionary<PacketType, uint>> lastPacketUsed = new Dictionary<ClientKey, Dictionary<PacketType, uint>>();
         private PackectsUsedRegistry<ClientKey, PacketType> packectsUsedRegistry = new PackectsUsedRegistry<ClientKey, PacketType>();
+
 
         public bool IsConnected { get; private set; }
 
@@ -39,6 +41,7 @@ namespace KapNet.src
 
             PacketTypeStrategy = new Dictionary<PacketType, PacketTypeDelegate>()
             {
+
                 { PacketType.Handshake, HandleHandShake },
                 { PacketType.Ping, HandlePing },
                 { PacketType.ClientLeft, HandleClientLeft },
@@ -48,15 +51,69 @@ namespace KapNet.src
             sendingMetaDataStrategy = new Dictionary<PacketMetaData, SendPacketMetaDataDelegate>()
             {
                 { PacketMetaData.Reliable, HandleReliableMessageSend },
-                { PacketMetaData.Crytical, HandleCriticalMessageSend }
+                { PacketMetaData.Encrypted, HandleEncryptedSend },
+                { PacketMetaData.Crytical, HandleCriticalMessageSend },
             };
 
             recivingMetaDataStrategy = new Dictionary<PacketMetaData, RecivePacketMetaDataDelegate>()
             {
+                {PacketMetaData.Encrypted, HandleEncryptedRecieved },
                 {PacketMetaData.Reliable, HandleReliablePacketRecived },
                 {PacketMetaData.Ordenable, HandleOrdenablePacketRecived },
                 {PacketMetaData.Crytical, HandleCriticalPacketRecived }
             };
+        }
+
+        private bool HandleEncryptedRecieved(ref NetworkPacket networkPacket)
+        {
+            if (networkPacket.payload == null || networkPacket.payload.Length < sizeof(int))
+                return false;
+
+            int ivLength = BitConverter.ToInt32(networkPacket.payload, 0);
+
+            byte[] iv = new byte[ivLength];
+            Buffer.BlockCopy(networkPacket.payload, sizeof(int), iv, 0, ivLength);
+
+            int encryptedLength = networkPacket.payload.Length - sizeof(int) - ivLength;
+            byte[] encrypted = new byte[encryptedLength];
+
+            Buffer.BlockCopy(networkPacket.payload, sizeof(int) + ivLength, encrypted, 0, encryptedLength);
+
+            byte[] decrypted = packetEncryptor.Decrypt(encrypted, iv);
+
+            networkPacket.payload = decrypted;
+
+            return true;
+        }
+
+        private void HandleEncryptedSend(NetworkPacket packet, ref byte[] data)
+        {
+            if (packet.payload == null || packet.payload.Length == 0)
+                return;
+
+            (byte[] encrypted, byte[] iv) = packetEncryptor.Encrypt(packet.payload);
+
+            byte[] newPayload = new byte[sizeof(int) + iv.Length + encrypted.Length];
+
+            BitConverter.GetBytes(iv.Length).CopyTo(newPayload, 0);
+            iv.CopyTo(newPayload, sizeof(int));
+            encrypted.CopyTo(newPayload, sizeof(int) + iv.Length);
+
+            packet.payload = newPayload;
+
+            byte[] newData = new byte[PacketLayout.PacketConstSpace + newPayload.Length];
+
+            Buffer.BlockCopy(data, 0, newData, 0, PacketLayout.PacketPayloadOffSet);
+
+            Buffer.BlockCopy(newPayload, 0, newData, PacketLayout.PacketPayloadOffSet, newPayload.Length);
+
+            int checkSum1 = PacketUtility.GetCheckSum1(newData);
+            int checkSum2 = PacketUtility.GetCheckSum2(newData);
+
+            BitConverter.GetBytes(checkSum1).CopyTo(newData, PacketLayout.CheckSum1EndOffSet);
+            BitConverter.GetBytes(checkSum2).CopyTo(newData, PacketLayout.CheckSum2EndOffSet);
+
+            data = newData;
         }
 
         public virtual void Tick()
@@ -175,7 +232,7 @@ namespace KapNet.src
             {
                 if (packet.metaData.HasFlag(strategy.Key))
                 {
-                    if (!strategy.Value(packet))
+                    if (!strategy.Value(ref packet))
                         handle = false;
                 }
             }
@@ -189,7 +246,7 @@ namespace KapNet.src
             {
                 if (packet.metaData.HasFlag(strategy.Key))
                 {
-                    strategy.Value(packet, data);
+                    strategy.Value(packet, ref data);
                 }
             }
         }
@@ -222,17 +279,17 @@ namespace KapNet.src
             packetResender.Remove(packetType, packetID);
         }
 
-        private void HandleReliableMessageSend(NetworkPacket networkPacket, byte[] data)
+        private void HandleReliableMessageSend(NetworkPacket networkPacket, ref byte[] data)
         {
             packetResender.Add(networkPacket.type, data, networkPacket.packetID, networkPacket.ipEndPoint);
         }
 
-        private void HandleCriticalMessageSend(NetworkPacket packet, byte[] data)
+        private void HandleCriticalMessageSend(NetworkPacket packet, ref byte[] data)
         {
 
         }
 
-        private bool HandleReliablePacketRecived(NetworkPacket networkPacket)
+        private bool HandleReliablePacketRecived(ref NetworkPacket networkPacket)
         {
             uint clientID = networkPacket.payload.Length != 0 ? BitConverter.ToUInt32(networkPacket.payload, 0) : 0;
 
@@ -260,7 +317,7 @@ namespace KapNet.src
             return shouldBeProcess;
         }
 
-        private bool HandleOrdenablePacketRecived(NetworkPacket networkPacket)
+        private bool HandleOrdenablePacketRecived(ref NetworkPacket networkPacket)
         {
             ClientKey clientKey = typeof(ClientKey) == typeof(IPEndPoint) ? (ClientKey)(object)networkPacket.ipEndPoint : (ClientKey)(object)BitConverter.ToUInt32(networkPacket.payload, 0);
 
@@ -300,9 +357,9 @@ namespace KapNet.src
             return false;
         }
 
-        private bool HandleCriticalPacketRecived(NetworkPacket networkPacket)
+        private bool HandleCriticalPacketRecived(ref NetworkPacket networkPacket)
         {
-            return false;
+            return true;
         }
     }
 }
