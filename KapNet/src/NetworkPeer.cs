@@ -1,4 +1,5 @@
-﻿using KapNet.src.time;
+﻿using KapNet.src.packets;
+using KapNet.src.time;
 using System;
 using System.Collections.Generic;
 using System.Net;
@@ -9,11 +10,12 @@ namespace KapNet.src
     {
         protected delegate void PacketTypeDelegate(NetworkPacket networkPacket);
         private delegate void SendPacketMetaDataDelegate(NetworkPacket networkPacket, ref byte[] data);
-        private delegate bool RecivePacketMetaDataDelegate(ref NetworkPacket networkPacket);
+        private delegate bool RecivePacketMetaDataDelegate(ref NetworkPacket networkPacket, byte[] data);
 
         protected const uint NULL_NETWORKPEER = 0;
+        public uint NetworkID = NULL_NETWORKPEER;
 
-        PacketResender packetResender;
+        private PacketResender packetResender;
         public PacketEncryptor packetEncryptor;
 
         private List<byte[]> cryticalPackets = new List<byte[]>();
@@ -22,6 +24,8 @@ namespace KapNet.src
         private Dictionary<ClientKey, Dictionary<PacketType, uint>> lastPacketUsed = new Dictionary<ClientKey, Dictionary<PacketType, uint>>();
         private PackectsUsedRegistry<ClientKey, PacketType> packectsUsedRegistry = new PackectsUsedRegistry<ClientKey, PacketType>();
 
+        protected PacketReader packetReader;
+        protected PacketWriter packetWriter;
 
         public bool IsConnected { get; private set; }
 
@@ -29,19 +33,19 @@ namespace KapNet.src
         private Dictionary<PacketMetaData, SendPacketMetaDataDelegate> sendingMetaDataStrategy;
         private Dictionary<PacketMetaData, RecivePacketMetaDataDelegate> recivingMetaDataStrategy;
 
-        private PacketFactory packetFactory = new PacketFactory();
-
+        protected PacketFactory packetFactory = new PacketFactory();
         private UdpConnection connection;
 
         public NetworkPeer()
         {
-            packetResender = new PacketResender(this);
+            packetReader = new PacketReader();
+            packetWriter = new PacketWriter();
 
+            packetResender = new PacketResender(this);
             IsConnected = false;
 
             PacketTypeStrategy = new Dictionary<PacketType, PacketTypeDelegate>()
             {
-
                 { PacketType.Handshake, HandleHandShake },
                 { PacketType.Ping, HandlePing },
                 { PacketType.ClientLeft, HandleClientLeft },
@@ -51,37 +55,24 @@ namespace KapNet.src
             sendingMetaDataStrategy = new Dictionary<PacketMetaData, SendPacketMetaDataDelegate>()
             {
                 { PacketMetaData.Reliable, HandleReliableMessageSend },
-                { PacketMetaData.Encrypted, HandleEncryptedSend },
                 { PacketMetaData.Crytical, HandleCriticalMessageSend },
+                { PacketMetaData.Encrypted, HandleEncryptedSend },
             };
 
             recivingMetaDataStrategy = new Dictionary<PacketMetaData, RecivePacketMetaDataDelegate>()
             {
-                {PacketMetaData.Encrypted, HandleEncryptedRecieved },
-                {PacketMetaData.Reliable, HandleReliablePacketRecived },
-                {PacketMetaData.Ordenable, HandleOrdenablePacketRecived },
-                {PacketMetaData.Crytical, HandleCriticalPacketRecived }
+                { PacketMetaData.Encrypted, HandleEncryptedRecieved },
+                { PacketMetaData.Reliable, HandleReliablePacketRecived },
+                { PacketMetaData.Ordenable, HandleOrdenablePacketRecived },
+                { PacketMetaData.Crytical, HandleCriticalPacketRecived }
             };
         }
 
-        private bool HandleEncryptedRecieved(ref NetworkPacket networkPacket)
+        private bool HandleEncryptedRecieved(ref NetworkPacket networkPacket, byte[] data)
         {
-            if (networkPacket.payload == null || networkPacket.payload.Length < sizeof(int))
-                return false;
-
-            int ivLength = BitConverter.ToInt32(networkPacket.payload, 0);
-
-            byte[] iv = new byte[ivLength];
-            Buffer.BlockCopy(networkPacket.payload, sizeof(int), iv, 0, ivLength);
-
-            int encryptedLength = networkPacket.payload.Length - sizeof(int) - ivLength;
-            byte[] encrypted = new byte[encryptedLength];
-
-            Buffer.BlockCopy(networkPacket.payload, sizeof(int) + ivLength, encrypted, 0, encryptedLength);
-
-            byte[] decrypted = packetEncryptor.Decrypt(encrypted, iv);
-
-            networkPacket.payload = decrypted;
+            byte[] iv = packetReader.ReadBytes();
+            byte[] encrypted = packetReader.ReadBytes();
+            networkPacket.payload = packetEncryptor.Decrypt(encrypted, iv);
 
             return true;
         }
@@ -93,241 +84,125 @@ namespace KapNet.src
 
             (byte[] encrypted, byte[] iv) = packetEncryptor.Encrypt(packet.payload);
 
-            byte[] newPayload = new byte[sizeof(int) + iv.Length + encrypted.Length];
+            packetWriter.Write(iv);
+            packetWriter.Write(encrypted);
+            packet.payload = packetWriter.GetBytes();
 
-            BitConverter.GetBytes(iv.Length).CopyTo(newPayload, 0);
-            iv.CopyTo(newPayload, sizeof(int));
-            encrypted.CopyTo(newPayload, sizeof(int) + iv.Length);
+            packetWriter.Reset();
 
-            packet.payload = newPayload;
-
-            byte[] newData = new byte[PacketLayout.PacketConstSpace + newPayload.Length];
-
-            Buffer.BlockCopy(data, 0, newData, 0, PacketLayout.PacketPayloadOffSet);
-
-            Buffer.BlockCopy(newPayload, 0, newData, PacketLayout.PacketPayloadOffSet, newPayload.Length);
-
-            int checkSum1 = PacketUtility.GetCheckSum1(newData);
-            int checkSum2 = PacketUtility.GetCheckSum2(newData);
-
-            BitConverter.GetBytes(checkSum1).CopyTo(newData, PacketLayout.CheckSum1EndOffSet);
-            BitConverter.GetBytes(checkSum2).CopyTo(newData, PacketLayout.CheckSum2EndOffSet);
+            (byte[] newData, uint _) = packetFactory.Create(
+                packet.type,
+                packet.payload,
+                packet.metaData,
+                packet.packetID
+            );
 
             data = newData;
         }
 
-        public virtual void Tick()
+        public void Send(IPEndPoint ip, PacketType type, PacketMetaData metaData = PacketMetaData.None, params object[] parameters)
         {
-            if (connection != null)
-                connection.FlushReceiveData();
+            if (connection == null)
+                return;
 
-            packetResender.Tick();
-            packectsUsedRegistry.Tick();
+            packetWriter.Write(parameters);
+
+            byte[] payload = packetWriter.GetBytes();
+
+            packetWriter.Reset();
+
+            (byte[] data, uint packetId) = packetFactory.Create(type, payload, metaData);
+            NetworkPacket networkPacket = new NetworkPacket(type, packetId, metaData, payload, ip);
+
+            HandleSendMetaData(networkPacket, ref data);
+            SendRaw(data, ip);
         }
 
-        public void Connect(string ip, int port)
+        public void Send(PacketType type, PacketMetaData metaData = PacketMetaData.None, params object[] parameters)
         {
-            packectsUsedRegistry.Clear();
-            packetResender.Clear();
+            if (connection == null)
+                return;
 
-            IsConnected = true;
+            if (parameters != null && parameters.Length > 0)
+                packetWriter.Write(parameters);
+            else
+                packetWriter.Write(new byte[0]);
 
-            if (connection != null)
-                connection.Close();
+            packetWriter.Reset();
 
-            IPAddress iPAddress = IPAddress.Parse(ip);
-            connection = new UdpConnection(iPAddress, port, this);
+            byte[] payload = packetWriter.GetBytes();
+
+            (byte[] data, uint packetId) = packetFactory.Create(type, payload, metaData);
+            NetworkPacket networkPacket = new NetworkPacket(type, packetId, metaData, payload);
+
+            HandleSendMetaData(networkPacket, ref data);
+            SendRaw(data);
         }
 
-        public void Connect(IPAddress ipAddress, int port)
-        {
-            packectsUsedRegistry.Clear();
-            packetResender.Clear();
-
-            IsConnected = true;
-
-            if (connection != null)
-                connection.Close();
-
-            connection = new UdpConnection(ipAddress, port, this);
-        }
-
-        public void Connect(int port)
-        {
-            packectsUsedRegistry.Clear();
-            packetResender.Clear();
-
-            if (connection != null)
-                connection.Close();
-
-            connection = new UdpConnection(port, this);
-        }
-
-        public virtual void OnReceiveData(byte[] data, IPEndPoint ipEndpoint)
+        public virtual void OnReceiveData(byte[] data, IPEndPoint sender)
         {
             PacketType type = PacketUtility.GetType(data);
             uint packetID = PacketUtility.GetPacketID(data);
             PacketMetaData metaData = PacketUtility.GetMetaData(data);
             byte[] payload = PacketUtility.GetPayload(data);
 
-            NetworkPacket networkPacket = new NetworkPacket
-            (
-                data,
-                type,
-                packetID,
-                metaData,
-                payload,
-                ipEndpoint
-            );
+            NetworkPacket networkPacket = new NetworkPacket(type, packetID, metaData, payload, sender);
 
-            if (!HandleRecivedMetaData(networkPacket))
+            packetReader.AssignData(payload);
+
+            if (!HandleRecivedMetaData(ref networkPacket, data))
                 return;
 
             if (PacketTypeStrategy.TryGetValue(networkPacket.type, out PacketTypeDelegate handler))
                 handler(networkPacket);
+            else
+                HandleUnhandledPacket(sender, data);
         }
 
-        public void Send(IPEndPoint ip, PacketType type, byte[] payload = null, PacketMetaData metaData = PacketMetaData.None)
-        {
-            (byte[] data, uint packetId) = packetFactory.Create(type, payload, metaData);
-
-            NetworkPacket networkPacket = new NetworkPacket
-            (
-                data,
-                type,
-                packetId,
-                metaData,
-                payload,
-                ip
-            );
-
-            HandleSendMetaData(networkPacket, data);
-
-            SendRaw(data, ip);
-        }
-
-        public void Send(PacketType type, byte[] payload = null, PacketMetaData metaData = PacketMetaData.None)
-        {
-            (byte[] data, uint packetId) = packetFactory.Create(type, payload, metaData);
-
-            NetworkPacket networkPacket = new NetworkPacket
-            (
-                data,
-                type,
-                packetId,
-                metaData,
-                payload
-            );
-
-            HandleSendMetaData(networkPacket, data);
-
-            SendRaw(data);
-        }
-
-        private bool HandleRecivedMetaData(NetworkPacket packet)
-        {
-            bool handle = true;
-
-            foreach (KeyValuePair<PacketMetaData, RecivePacketMetaDataDelegate> strategy in recivingMetaDataStrategy)
-            {
-                if (packet.metaData.HasFlag(strategy.Key))
-                {
-                    if (!strategy.Value(ref packet))
-                        handle = false;
-                }
-            }
-
-            return handle;
-        }
-
-        private void HandleSendMetaData(NetworkPacket packet, byte[] data)
-        {
-            foreach (KeyValuePair<PacketMetaData, SendPacketMetaDataDelegate> strategy in sendingMetaDataStrategy)
-            {
-                if (packet.metaData.HasFlag(strategy.Key))
-                {
-                    strategy.Value(packet, ref data);
-                }
-            }
-        }
-
-        public void SendRaw(byte[] data, IPEndPoint ip)
-        {
-            connection.Send(data, ip);
-        }
-
-        public void SendRaw(byte[] data)
-        {
-            connection.Send(data);
-        }
-
-        protected void Disconnect()
-        {
-            connection.Close();
-            connection = null;
-            IsConnected = false;
-        }
-
-        protected abstract void HandleHandShake(NetworkPacket networkPacket);
-        protected abstract void HandlePing(NetworkPacket networkPacket);
-        protected abstract void HandleClientLeft(NetworkPacket networkPacket);
+        protected virtual void HandleUnhandledPacket(IPEndPoint packet, byte[] data)
+        { }
 
         private void HandleAcknowledgement(NetworkPacket networkPacket)
         {
-            PacketType packetType = (PacketType)BitConverter.ToInt32(networkPacket.payload, 0);
-            uint packetID = BitConverter.ToUInt32(networkPacket.payload, sizeof(PacketType));
+            PacketType packetType = (PacketType)packetReader.ReadInt();
+            uint packetID = packetReader.ReadUInt();
             packetResender.Remove(packetType, packetID);
         }
 
-        private void HandleReliableMessageSend(NetworkPacket networkPacket, ref byte[] data)
+        private bool HandleReliablePacketRecived(ref NetworkPacket networkPacket, byte[] _)
         {
-            packetResender.Add(networkPacket.type, data, networkPacket.packetID, networkPacket.ipEndPoint);
-        }
+            uint clientID = 0;
 
-        private void HandleCriticalMessageSend(NetworkPacket packet, ref byte[] data)
-        {
+            if (networkPacket.payload.Length >= sizeof(uint))
+                clientID = packetReader.ReadUInt();
 
-        }
-
-        private bool HandleReliablePacketRecived(ref NetworkPacket networkPacket)
-        {
-            uint clientID = networkPacket.payload.Length != 0 ? BitConverter.ToUInt32(networkPacket.payload, 0) : 0;
-
-            byte[] payload = new byte[sizeof(PacketType) + sizeof(uint)];
-
-            BitConverter.GetBytes((int)networkPacket.type).CopyTo(payload, 0);
-            BitConverter.GetBytes(networkPacket.packetID).CopyTo(payload, sizeof(uint));
+            networkPacket.clientID = clientID;
 
             if (IsConnected)
-                Send(PacketType.Acknowledgement, payload);
+                Send(PacketType.Acknowledgement, PacketMetaData.None, (int)networkPacket.type, networkPacket.packetID);
             else
-                Send(networkPacket.ipEndPoint, PacketType.Acknowledgement, payload);
+                Send(networkPacket.ipEndPoint, PacketType.Acknowledgement, PacketMetaData.None, (int)networkPacket.type, networkPacket.packetID);
 
-            ClientKey clientKey = typeof(ClientKey) == typeof(IPEndPoint) ? (ClientKey)(object)networkPacket.ipEndPoint : (ClientKey)(object)clientID;
-
-            bool shouldBeProcess = false;
+            ClientKey clientKey = GetClientKey(networkPacket, clientID);
 
             if (packectsUsedRegistry.ContainsPacket(clientKey, networkPacket.type, networkPacket.packetID))
-                shouldBeProcess = false;
-            else
-                shouldBeProcess = true;
+                return false;
 
             packectsUsedRegistry.SetPacket(clientKey, networkPacket.type, networkPacket.packetID);
-
-            return shouldBeProcess;
+            return true;
         }
 
-        private bool HandleOrdenablePacketRecived(ref NetworkPacket networkPacket)
+        private bool HandleOrdenablePacketRecived(ref NetworkPacket networkPacket, byte[] data)
         {
-            ClientKey clientKey = typeof(ClientKey) == typeof(IPEndPoint) ? (ClientKey)(object)networkPacket.ipEndPoint : (ClientKey)(object)BitConverter.ToUInt32(networkPacket.payload, 0);
+            ClientKey clientKey = GetClientKey(networkPacket, networkPacket.clientID);
 
-            if (!ordenablePackets.TryGetValue(clientKey, out Dictionary<PacketType, SortedDictionary<uint, NetworkPacket>> clientsPackets))
+            if (!ordenablePackets.TryGetValue(clientKey, out var clientsPackets))
             {
                 clientsPackets = new Dictionary<PacketType, SortedDictionary<uint, NetworkPacket>>();
                 ordenablePackets[clientKey] = clientsPackets;
             }
 
-            if (!clientsPackets.TryGetValue(networkPacket.type, out SortedDictionary<uint, NetworkPacket> packets))
+            if (!clientsPackets.TryGetValue(networkPacket.type, out var packets))
             {
                 packets = new SortedDictionary<uint, NetworkPacket>();
                 clientsPackets[networkPacket.type] = packets;
@@ -335,16 +210,14 @@ namespace KapNet.src
 
             packets[networkPacket.packetID] = networkPacket;
 
-            if (!lastPacketUsed.TryGetValue(clientKey, out Dictionary<PacketType, uint> lastPackets))
+            if (!lastPacketUsed.TryGetValue(clientKey, out var lastPackets))
             {
                 lastPackets = new Dictionary<PacketType, uint>();
                 lastPacketUsed[clientKey] = lastPackets;
             }
 
             if (!lastPackets.ContainsKey(networkPacket.type))
-            {
                 lastPackets[networkPacket.type] = 0;
-            }
 
             while (packets.TryGetValue(lastPackets[networkPacket.type] + 1, out NetworkPacket nextPacket))
             {
@@ -357,9 +230,83 @@ namespace KapNet.src
             return false;
         }
 
-        private bool HandleCriticalPacketRecived(ref NetworkPacket networkPacket)
+        private ClientKey GetClientKey(NetworkPacket packet, uint clientID)
         {
+            if (typeof(ClientKey) == typeof(IPEndPoint))
+                return (ClientKey)(object)packet.ipEndPoint;
+
+            return (ClientKey)(object)clientID;
+        }
+
+        public virtual void Tick()
+        {
+            if (connection == null)
+                return;
+
+            connection.FlushReceiveData();
+
+            packetResender.Tick();
+            packectsUsedRegistry.Tick();
+        }
+
+        public void Connect(string ip, int port)
+        {
+            Disconnect();
+            connection = new UdpConnection(IPAddress.Parse(ip), port, this);
+        }
+
+        public void Connect(int port)
+        {
+            Disconnect();
+            connection = new UdpConnection(port, this);
+        }
+
+        public void Connect(IPAddress ipAdress, int port)
+        {
+            Disconnect();
+            connection = new UdpConnection(ipAdress, port, this);
+        }
+
+        public void Disconnect()
+        {
+            packectsUsedRegistry.Clear();
+            packetResender.Clear();
+
+            if (connection != null)
+                connection.Close();
+        }
+
+        public void SendRaw(byte[] data, IPEndPoint ip) => connection.Send(data, ip);
+        public void SendRaw(byte[] data) => connection.Send(data);
+
+        protected abstract void HandleHandShake(NetworkPacket networkPacket);
+        protected abstract void HandlePing(NetworkPacket networkPacket);
+        protected abstract void HandleClientLeft(NetworkPacket networkPacket);
+
+        private void HandleReliableMessageSend(NetworkPacket networkPacket, ref byte[] data)
+        {
+            packetResender.Add(networkPacket.type, data, networkPacket.packetID, networkPacket.ipEndPoint);
+        }
+        private void HandleCriticalMessageSend(NetworkPacket packet, ref byte[] data) => cryticalPackets.Add(data);
+        private bool HandleCriticalPacketRecived(ref NetworkPacket networkPacket, byte[] data)
+        {
+            cryticalPackets.Add(data);
             return true;
+        }
+
+        private void HandleSendMetaData(NetworkPacket packet, ref byte[] data)
+        {
+            foreach (KeyValuePair<PacketMetaData, SendPacketMetaDataDelegate> strategy in sendingMetaDataStrategy)
+                if (packet.metaData.HasFlag(strategy.Key)) strategy.Value(packet, ref data);
+        }
+
+        private bool HandleRecivedMetaData(ref NetworkPacket packet, byte[] data)
+        {
+            bool handle = true;
+            foreach (KeyValuePair<PacketMetaData, RecivePacketMetaDataDelegate> strategy in recivingMetaDataStrategy)
+                if (packet.metaData.HasFlag(strategy.Key))
+                    if (!strategy.Value(ref packet, data)) handle = false;
+            return handle;
         }
     }
 }

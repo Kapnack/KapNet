@@ -4,6 +4,13 @@ namespace KapNet
 {
     internal static class PacketUtility
     {
+        public static byte[] Repacket(NetworkPacket networkPacket)
+        {
+            byte[] data = new byte[PacketLayout.PacketConstSpace + networkPacket.payload.Length];
+
+            return data;
+        }
+
         public static int CalculateCheckSum(byte[] data, int startOffset = 0, int endOffset = 0)
         {
             int checksum = 0;

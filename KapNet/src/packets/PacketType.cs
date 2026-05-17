@@ -4,12 +4,14 @@ namespace KapNet
     {
         Handshake,
         Acknowledgement,
-        SendID,
         ClientJoined,
         ClientLeft,
+        Position,
+        Spawn,
+        Destroy,
+        RaceState,
         Ping,
         Data,
-        DisconnectClient,
         ServerShutDown,
         ConnectToServer
     }
