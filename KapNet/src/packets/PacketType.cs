@@ -10,6 +10,7 @@ namespace KapNet
         Spawn,
         Destroy,
         RaceState,
+        RejectedQueue,
         Ping,
         Data,
         ServerShutDown,

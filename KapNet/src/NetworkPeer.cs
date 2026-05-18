@@ -27,7 +27,8 @@ namespace KapNet.src
         protected PacketReader packetReader;
         protected PacketWriter packetWriter;
 
-        public bool IsConnected { get; private set; }
+        private bool isConnected = false;
+        public bool IsConnected => isConnected;
 
         protected Dictionary<PacketType, PacketTypeDelegate> PacketTypeStrategy { get; private set; }
         private Dictionary<PacketMetaData, SendPacketMetaDataDelegate> sendingMetaDataStrategy;
@@ -42,7 +43,7 @@ namespace KapNet.src
             packetWriter = new PacketWriter();
 
             packetResender = new PacketResender(this);
-            IsConnected = false;
+            isConnected = false;
 
             PacketTypeStrategy = new Dictionary<PacketType, PacketTypeDelegate>()
             {
@@ -142,6 +143,27 @@ namespace KapNet.src
             SendRaw(data);
         }
 
+        public void SendByteArrayRaw(PacketType type, PacketMetaData metaData, byte[] byteArray)
+        {
+            if (connection == null)
+                throw new NullReferenceException("No connection");
+
+            if (metaData.HasFlag(PacketMetaData.Reliable))
+                packetWriter.Write(NetworkID);
+
+            packetWriter.WriteRaw(byteArray);
+
+            byte[] payload = packetWriter.GetBytes();
+
+            packetWriter.Reset();
+
+            (byte[] data, uint packetId) = packetFactory.Create(type, payload, metaData);
+            NetworkPacket networkPacket = new NetworkPacket(type, packetId, metaData, payload);
+
+            HandleSendMetaData(networkPacket, ref data);
+            SendRaw(data);
+        }
+
         public virtual void OnReceiveData(byte[] data, IPEndPoint sender)
         {
             PacketType type = PacketUtility.GetType(data);
@@ -159,11 +181,12 @@ namespace KapNet.src
             if (PacketTypeStrategy.TryGetValue(networkPacket.type, out PacketTypeDelegate handler))
                 handler(networkPacket);
             else
-                HandleUnhandledPacket(sender, data);
+                HandleUnhandledPacket(networkPacket);
         }
 
-        protected virtual void HandleUnhandledPacket(IPEndPoint packet, byte[] data)
-        { }
+        protected virtual void HandleUnhandledPacket(NetworkPacket networkPacket)
+        {
+        }
 
         private void HandleAcknowledgement(NetworkPacket networkPacket)
         {
@@ -178,7 +201,7 @@ namespace KapNet.src
 
             networkPacket.clientID = clientID;
 
-            if (IsConnected)
+            if (isConnected)
                 Send(PacketType.Acknowledgement, PacketMetaData.None, (int)networkPacket.type, networkPacket.packetID);
             else
                 Send(networkPacket.ipEndPoint, PacketType.Acknowledgement, PacketMetaData.None, (int)networkPacket.type, networkPacket.packetID);
@@ -255,7 +278,7 @@ namespace KapNet.src
         public void Connect(string ip, int port)
         {
             Disconnect();
-            IsConnected = true;
+            isConnected = true;
             connection = new UdpConnection(IPAddress.Parse(ip), port, this);
         }
 
@@ -268,7 +291,7 @@ namespace KapNet.src
         public void Connect(IPAddress ipAdress, int port)
         {
             Disconnect();
-            IsConnected = true;
+            isConnected = true;
             connection = new UdpConnection(ipAdress, port, this);
         }
 
@@ -280,7 +303,7 @@ namespace KapNet.src
             if (connection != null)
                 connection.Close();
 
-            IsConnected = false;
+            isConnected = false;
         }
 
         public void SendRaw(byte[] data, IPEndPoint ip) => connection.Send(data, ip);
