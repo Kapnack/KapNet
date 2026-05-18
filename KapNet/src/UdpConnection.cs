@@ -100,7 +100,7 @@ public class UdpConnection
 
     private bool IsValidCheckSum(byte[] data)
     {
-        return PacketUtility.CalculateCheckSum(data, 0, 8) == PacketUtility.GetCheckSum1(data) && PacketUtility.CalculateCheckSum(data, 0, 4) == PacketUtility.GetCheckSum2(data);
+        return PacketUtility.CalculateCheckSum(data, 0, PacketLayout.CheckSum1EndOffSet) == PacketUtility.GetCheckSum1(data) && PacketUtility.CalculateCheckSum(data, 0, PacketLayout.CheckSum2EndOffSet) == PacketUtility.GetCheckSum2(data);
     }
 
     public void Send(byte[] data)

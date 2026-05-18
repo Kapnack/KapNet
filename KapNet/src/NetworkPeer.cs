@@ -103,7 +103,10 @@ namespace KapNet.src
         public void Send(IPEndPoint ip, PacketType type, PacketMetaData metaData = PacketMetaData.None, params object[] parameters)
         {
             if (connection == null)
-                return;
+                throw new NullReferenceException("No connection");
+
+            if (metaData.HasFlag(PacketMetaData.Reliable))
+                packetWriter.Write(NetworkID);
 
             packetWriter.Write(parameters);
 
@@ -121,16 +124,16 @@ namespace KapNet.src
         public void Send(PacketType type, PacketMetaData metaData = PacketMetaData.None, params object[] parameters)
         {
             if (connection == null)
-                return;
+                throw new NullReferenceException("No connection");
 
-            if (parameters != null && parameters.Length > 0)
-                packetWriter.Write(parameters);
-            else
-                packetWriter.Write(new byte[0]);
+            if (metaData.HasFlag(PacketMetaData.Reliable))
+                packetWriter.Write(NetworkID);
 
-            packetWriter.Reset();
+            packetWriter.Write(parameters);
 
             byte[] payload = packetWriter.GetBytes();
+
+            packetWriter.Reset();
 
             (byte[] data, uint packetId) = packetFactory.Create(type, payload, metaData);
             NetworkPacket networkPacket = new NetworkPacket(type, packetId, metaData, payload);
@@ -171,10 +174,7 @@ namespace KapNet.src
 
         private bool HandleReliablePacketRecived(ref NetworkPacket networkPacket, byte[] _)
         {
-            uint clientID = 0;
-
-            if (networkPacket.payload.Length >= sizeof(uint))
-                clientID = packetReader.ReadUInt();
+            uint clientID = packetReader.ReadUInt();
 
             networkPacket.clientID = clientID;
 
@@ -186,7 +186,10 @@ namespace KapNet.src
             ClientKey clientKey = GetClientKey(networkPacket, clientID);
 
             if (packectsUsedRegistry.ContainsPacket(clientKey, networkPacket.type, networkPacket.packetID))
+            {
+                packectsUsedRegistry.SetPacket(clientKey, networkPacket.type, networkPacket.packetID);
                 return false;
+            }
 
             packectsUsedRegistry.SetPacket(clientKey, networkPacket.type, networkPacket.packetID);
             return true;
@@ -252,6 +255,7 @@ namespace KapNet.src
         public void Connect(string ip, int port)
         {
             Disconnect();
+            IsConnected = true;
             connection = new UdpConnection(IPAddress.Parse(ip), port, this);
         }
 
@@ -264,6 +268,7 @@ namespace KapNet.src
         public void Connect(IPAddress ipAdress, int port)
         {
             Disconnect();
+            IsConnected = true;
             connection = new UdpConnection(ipAdress, port, this);
         }
 
@@ -274,6 +279,8 @@ namespace KapNet.src
 
             if (connection != null)
                 connection.Close();
+
+            IsConnected = false;
         }
 
         public void SendRaw(byte[] data, IPEndPoint ip) => connection.Send(data, ip);
@@ -305,7 +312,9 @@ namespace KapNet.src
             bool handle = true;
             foreach (KeyValuePair<PacketMetaData, RecivePacketMetaDataDelegate> strategy in recivingMetaDataStrategy)
                 if (packet.metaData.HasFlag(strategy.Key))
-                    if (!strategy.Value(ref packet, data)) handle = false;
+                    if (!strategy.Value(ref packet, data))
+                        handle = false;
+
             return handle;
         }
     }

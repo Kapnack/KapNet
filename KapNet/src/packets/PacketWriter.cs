@@ -27,6 +27,10 @@ public class PacketWriter : IDisposable
                 case float f: Write(f); break;
                 case long l: Write(l); break;
                 case double d: Write(d); break;
+                case byte[] ba: Write(ba); break;
+                case string str: Write(str); break;
+                default:
+                    throw new NotSupportedException($"Type {o.GetType()} is not supported by PacketWriter.");
             }
         }
     }
