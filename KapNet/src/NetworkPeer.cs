@@ -164,6 +164,27 @@ namespace KapNet.src
             SendRaw(data);
         }
 
+        public void SendByteArrayRaw(IPEndPoint destination, PacketType type, PacketMetaData metaData, byte[] byteArray)
+        {
+            if (connection == null)
+                throw new NullReferenceException("No connection");
+
+            if (metaData.HasFlag(PacketMetaData.Reliable))
+                packetWriter.Write(NetworkID);
+
+            packetWriter.WriteRaw(byteArray);
+
+            byte[] payload = packetWriter.GetBytes();
+
+            packetWriter.Reset();
+
+            (byte[] data, uint packetId) = packetFactory.Create(type, payload, metaData);
+            NetworkPacket networkPacket = new NetworkPacket(type, packetId, metaData, payload);
+
+            HandleSendMetaData(networkPacket, ref data);
+            SendRaw(data, destination);
+        }
+
         public virtual void OnReceiveData(byte[] data, IPEndPoint sender)
         {
             PacketType type = PacketUtility.GetType(data);
