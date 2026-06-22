@@ -28,7 +28,7 @@ namespace KapNet.src
         protected PacketWriter packetWriter;
 
         private bool isConnected = false;
-        public bool IsConnected => isConnected;
+        public bool IsConnected => isConnected; 
 
         protected Dictionary<PacketType, PacketTypeDelegate> PacketTypeStrategy { get; private set; }
         private Dictionary<PacketMetaData, SendPacketMetaDataDelegate> sendingMetaDataStrategy;
