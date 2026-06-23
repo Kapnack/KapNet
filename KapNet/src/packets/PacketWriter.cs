@@ -1,5 +1,6 @@
 ﻿using System;
 using System.IO;
+using System.Runtime.InteropServices;
 using System.Text;
 
 public class PacketWriter : IDisposable
@@ -59,6 +60,13 @@ public class PacketWriter : IDisposable
     {
         byte[] stringBytes = Encoding.UTF8.GetBytes(value);
         Write(stringBytes);
+    }
+
+    public void Write<T>(T[] values) where T : unmanaged
+    {
+        Write(values.Length);
+        ReadOnlySpan<byte> bytes = MemoryMarshal.AsBytes(values.AsSpan());
+        writer.Write(bytes.ToArray());
     }
 
     public byte[] GetBytes() => ms.ToArray();

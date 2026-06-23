@@ -28,8 +28,9 @@ namespace KapNet.src
         protected PacketWriter packetWriter;
 
         private bool isConnected = false;
-        public bool IsConnected => isConnected; 
+        public bool IsConnected => isConnected;
 
+        private NetTree netTree;
         protected Dictionary<PacketType, PacketTypeDelegate> PacketTypeStrategy { get; private set; }
         private Dictionary<PacketMetaData, SendPacketMetaDataDelegate> sendingMetaDataStrategy;
         private Dictionary<PacketMetaData, RecivePacketMetaDataDelegate> recivingMetaDataStrategy;
@@ -37,8 +38,10 @@ namespace KapNet.src
         protected PacketFactory packetFactory = new PacketFactory();
         private UdpConnection connection;
 
-        public NetworkPeer()
+        public NetworkPeer(Type projectRoot)
         {
+            netTree = NetTree.Build(projectRoot);
+
             packetReader = new PacketReader();
             packetWriter = new PacketWriter();
 
@@ -50,14 +53,16 @@ namespace KapNet.src
                 { PacketType.Handshake, HandleHandShake },
                 { PacketType.Ping, HandlePing },
                 { PacketType.ClientLeft, HandleClientLeft },
-                { PacketType.Acknowledgement, HandleAcknowledgement }
+                { PacketType.Acknowledgement, HandleAcknowledgement },
+                { PacketType.vInt, HandleReadInt },
+                { PacketType.vUInt, HandleReadUInt }
             };
 
             sendingMetaDataStrategy = new Dictionary<PacketMetaData, SendPacketMetaDataDelegate>()
             {
                 { PacketMetaData.Reliable, HandleReliableMessageSend },
                 { PacketMetaData.Crytical, HandleCriticalMessageSend },
-                { PacketMetaData.Encrypted, HandleEncryptedSend },
+                { PacketMetaData.Encrypted, HandleEncryptedSend }
             };
 
             recivingMetaDataStrategy = new Dictionary<PacketMetaData, RecivePacketMetaDataDelegate>()
@@ -67,6 +72,22 @@ namespace KapNet.src
                 { PacketMetaData.Ordenable, HandleOrdenablePacketRecived },
                 { PacketMetaData.Crytical, HandleCriticalPacketRecived }
             };
+        }
+
+        private void HandleReadInt(NetworkPacket networkPacket)
+        {
+            int value = packetReader.ReadInt();
+            uint[] address = packetReader.ReadArray<uint>();
+
+            netTree.SetValue(value, address);
+        }
+
+        private void HandleReadUInt(NetworkPacket networkPacket)
+        {
+            uint value = packetReader.ReadUInt();
+            uint[] address = packetReader.ReadArray<uint>();
+
+            netTree.SetValue(value, address);
         }
 
         private bool HandleEncryptedRecieved(ref NetworkPacket networkPacket, byte[] data)

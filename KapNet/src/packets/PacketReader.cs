@@ -1,4 +1,7 @@
 ﻿using System;
+using System.IO;
+using System.Runtime;
+using System.Runtime.InteropServices;
 
 namespace KapNet.src.packets
 {
@@ -106,6 +109,25 @@ namespace KapNet.src.packets
         {
             int length = ReadInt();
             return ReadBytes(length);
+        }
+
+        public PrimitiveType[] ReadArray<PrimitiveType>() where PrimitiveType : unmanaged
+        {
+            int length = ReadInt();
+            return ReadArray<PrimitiveType>(length);
+        }
+
+        public PrimitiveType[] ReadArray<PrimitiveType>(int length) where PrimitiveType : unmanaged
+        {
+            int totalBytes = length * Marshal.SizeOf(typeof(PrimitiveType));
+
+            PrimitiveType[] result = new PrimitiveType[length];
+
+            MemoryMarshal.Cast<byte, PrimitiveType>(data.AsSpan(position, totalBytes)).CopyTo(result);
+
+            position += totalBytes;
+
+            return result;
         }
 
         public byte[] GetRemaining()

@@ -1,8 +1,5 @@
-using ianco99.ToolBox.Events;
-using ianco99.ToolBox.Services;
-using NetBanana.Logs;
-using Network.BaseDLL;
-using Network.Events;
+using ImageCampus.ToolBox.Services;
+using KapNet;
 using System;
 using System.Collections.Generic;
 using System.IO;

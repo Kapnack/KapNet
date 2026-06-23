@@ -54,6 +54,8 @@
     <Compile Include="src\packets\PacketReader.cs" />
     <Compile Include="src\packets\PacketContainer.cs" />
     <Compile Include="src\packets\PacketWriter.cs" />
+    <Compile Include="src\TaskScheduler\ITickable.cs" />
+    <Compile Include="src\TaskScheduler\TaskScheduler.cs" />
     <Compile Include="src\ReliablePackets.cs" />
     <Compile Include="src\NetworkPeer.cs" />
     <Compile Include="src\PackectsUsedRegistry.cs" />

@@ -5,8 +5,8 @@ using System.Reflection;
 
 public class NetTree
 {
-    private object _baseObject = null!;
-    public NetNode? root;
+    private object _baseObject = null;
+    public NetNode root;
 
     const BindingFlags BINDINGS =
         BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance;
@@ -15,7 +15,7 @@ public class NetTree
     {
         NetTree tree = new NetTree();
         tree._baseObject = rootObject;
-        tree.root = new NetNode("root", Array.Empty<uint>());
+        tree.root = new NetNode("root", Array.Empty<uint>(), rootObject.GetHashCode());
 
         tree.Walk(rootObject, rootObject.GetType(), tree.root,
                   new List<uint>(), new List<object>());
@@ -23,21 +23,29 @@ public class NetTree
         return tree;
     }
 
+    public void Tick(Action<object, uint[]> updateValueEvent)
+    {
+        root.Tick(updateValueEvent);
+    }
+
     private void Walk(object obj, Type type, NetNode parentNode,
                       List<uint> addressSoFar, List<object> chainSoFar)
     {
-        if (obj == null) return;
+        if (obj == null)
+            return;
 
         foreach (FieldInfo field in type.GetFields(BINDINGS))
         {
             NetAttribute attr = field.GetCustomAttribute<NetAttribute>();
-            if (attr == null) continue;
+
+            if (attr == null) 
+                continue;
 
             List<uint> childAddr = new List<uint>(addressSoFar) { attr.id };
             List<object> childChain = new List<object>(chainSoFar) { field };
 
             string path = string.Join(" > ", childAddr);
-            NetNode childNode = new NetNode(path, childAddr.ToArray());
+            NetNode childNode = new NetNode(path, childAddr.ToArray(), field.GetValue(obj).GetHashCode());
             parentNode.AddChild(attr.id, childNode);
 
             Type fType = field.FieldType;
@@ -67,20 +75,20 @@ public class NetTree
         if (declaredType.IsArray)
         {
             Array arr = (Array)value;
-            Type elementType = declaredType.GetElementType()!;
+            Type elementType = declaredType.GetElementType();
             WalkArrayDim(arr, elementType, node, addr, chain,
                          partialIndices: new int[arr.Rank], dim: 0);
             return;
         }
 
-        (Type? keyType, Type? valType) = GetDictionaryTypes(declaredType);
+        (Type keyType, Type valType) = GetDictionaryTypes(declaredType);
         if (keyType != null)
         {
-            WalkDictionary((IDictionary)value, valType!, node, addr, chain);
+            WalkDictionary((IDictionary)value, valType, node, addr, chain);
             return;
         }
 
-        Type? elemType = GetCollectionElementType(declaredType);
+        Type elemType = GetCollectionElementType(declaredType);
         if (elemType != null)
         {
             WalkCollection((IEnumerable)value, elemType, node, addr, chain);
@@ -105,10 +113,10 @@ public class NetTree
                                           { new MultiIndex((int[])partialIndices.Clone()) };
 
             string path = string.Join(" > ", childAddr);
-            NetNode childNode = new NetNode(path, childAddr.ToArray());
+            NetNode childNode = new NetNode(path, childAddr.ToArray(), arr.GetValue(partialIndices).GetHashCode());
             parentNode.AddChild(linearIdx, childNode);
 
-            object? elem = arr.GetValue(partialIndices);
+            object elem = arr.GetValue(partialIndices);
             DispatchNode(elem, elementType, childNode, childAddr, childChain);
             return;
         }
@@ -147,7 +155,7 @@ public class NetTree
             List<object> childChain = new List<object>(chainSoFar) { new DictKey(key) };
 
             string path = $"{string.Join(" > ", childAddr)} (key={key})";
-            NetNode childNode = new NetNode(path, childAddr.ToArray());
+            NetNode childNode = new NetNode(path, childAddr.ToArray(), entry.Value.GetHashCode());
             parentNode.AddChild(slot, childNode);
 
             DispatchNode(entry.Value, valueType, childNode, childAddr, childChain);
@@ -168,7 +176,7 @@ public class NetTree
             List<object> childChain = new List<object>(chainSoFar) { new ListIndex(index) };
 
             string path = string.Join(" > ", childAddr);
-            NetNode childNode = new NetNode(path, childAddr.ToArray());
+            NetNode childNode = new NetNode(path, childAddr.ToArray(), item.GetHashCode());
             parentNode.AddChild((uint)index, childNode);
 
             DispatchNode(item, elementType, childNode, childAddr, childChain);
@@ -181,7 +189,7 @@ public class NetTree
         t == typeof(decimal) || t == typeof(DateTime);
 
 
-    private static (Type? keyType, Type? valueType) GetDictionaryTypes(Type t)
+    private static (Type keyType, Type valueType) GetDictionaryTypes(Type t)
     {
         foreach (Type iface in t.GetInterfaces())
         {
@@ -199,7 +207,7 @@ public class NetTree
         return (null, null);
     }
 
-    private static Type? GetCollectionElementType(Type t)
+    private static Type GetCollectionElementType(Type t)
     {
         if (typeof(IDictionary).IsAssignableFrom(t)) 
             return null;
@@ -224,17 +232,20 @@ public class NetTree
         return null;
     }
 
-    public NetNode? Get(params uint[] address) => root?.Resolve(address);
+    public NetNode Get(params uint[] address) => root?.Resolve(address);
 
-    public object? GetValue(params uint[] address)
+    public object GetValue(params uint[] address)
     {
         NetNode node = Get(address)
             ?? throw new KeyNotFoundException(
                    $"Address [{string.Join(",", address)}] not found.");
+
+
+
         return node.GetValue();
     }
 
-    public void SetValue(object? value, params uint[] address)
+    public void SetValue(object value, params uint[] address)
     {
         NetNode node = Get(address)
             ?? throw new KeyNotFoundException(
