@@ -18,18 +18,18 @@ public class NetTree
         tree.root = new NetNode("root", Array.Empty<uint>(), rootObject.GetHashCode());
 
         tree.Walk(rootObject, rootObject.GetType(), tree.root,
-                  new List<uint>(), new List<object>());
+                  new List<uint>(), new List<IAccessor>());
 
         return tree;
     }
 
     public void Tick(Action<object, uint[]> updateValueEvent)
     {
-        root.Tick(updateValueEvent);
+        root.Tick(_baseObject, updateValueEvent);
     }
 
     private void Walk(object obj, Type type, NetNode parentNode,
-                      List<uint> addressSoFar, List<object> chainSoFar)
+                      List<uint> addressSoFar, List<IAccessor> chainSoFar)
     {
         if (obj == null)
             return;
@@ -38,11 +38,11 @@ public class NetTree
         {
             NetAttribute attr = field.GetCustomAttribute<NetAttribute>();
 
-            if (attr == null) 
+            if (attr == null)
                 continue;
 
             List<uint> childAddr = new List<uint>(addressSoFar) { attr.id };
-            List<object> childChain = new List<object>(chainSoFar) { field };
+            List<IAccessor> childChain = new List<IAccessor>(chainSoFar) { new FieldAccessor(field) };
 
             string path = string.Join(" > ", childAddr);
             NetNode childNode = new NetNode(path, childAddr.ToArray(), field.GetValue(obj).GetHashCode());
@@ -56,28 +56,27 @@ public class NetTree
     }
 
     private void DispatchNode(object value, Type declaredType,
-                              NetNode node, List<uint> addr, List<object> chain)
+                              NetNode node, List<uint> addr, List<IAccessor> chain)
     {
         if (IsPrimitive(declaredType))
         {
-            node.SetPrimitiveLeaf(_baseObject, chain.ToArray());
+            node.SetPrimitiveLeaf(chain.ToArray());
             return;
         }
 
         if (value == null)
         {
-            node.SetNullClassLeaf(_baseObject, chain.ToArray());
+            node.SetNullClassLeaf(chain.ToArray());
             return;
         }
 
-        node.Init(_baseObject, chain.ToArray());
+        node.Init(chain.ToArray());
 
         if (declaredType.IsArray)
         {
             Array arr = (Array)value;
             Type elementType = declaredType.GetElementType();
-            WalkArrayDim(arr, elementType, node, addr, chain,
-                         partialIndices: new int[arr.Rank], dim: 0);
+            WalkArrayDim(arr, elementType, node, addr, chain, new int[arr.Rank], 0);
             return;
         }
 
@@ -98,10 +97,7 @@ public class NetTree
         Walk(value, declaredType, node, addr, chain);
     }
 
-    private void WalkArrayDim(Array arr, Type elementType,
-                              NetNode parentNode, List<uint> addressSoFar,
-                              List<object> chainSoFar,
-                              int[] partialIndices, int dim)
+    private void WalkArrayDim(Array arr, Type elementType, NetNode parentNode, List<uint> addressSoFar, List<IAccessor> chainSoFar, int[] partialIndices, int dim)
     {
         if (dim == arr.Rank)
         {
@@ -109,8 +105,8 @@ public class NetTree
 
             List<uint> childAddr = new List<uint>(addressSoFar) { linearIdx };
 
-            List<object> childChain = new List<object>(chainSoFar)
-                                          { new MultiIndex((int[])partialIndices.Clone()) };
+            List<IAccessor> childChain = new List<IAccessor>(chainSoFar)
+                                          { new ArrayAccessor((int[])partialIndices.Clone()) };
 
             string path = string.Join(" > ", childAddr);
             NetNode childNode = new NetNode(path, childAddr.ToArray(), arr.GetValue(partialIndices).GetHashCode());
@@ -142,9 +138,7 @@ public class NetTree
         return result;
     }
 
-    private void WalkDictionary(IDictionary dict, Type valueType,
-                                NetNode parentNode, List<uint> addressSoFar,
-                                List<object> chainSoFar)
+    private void WalkDictionary(IDictionary dict, Type valueType, NetNode parentNode, List<uint> addressSoFar, List<IAccessor> chainSoFar)
     {
         uint slot = 0;
         foreach (DictionaryEntry entry in dict)
@@ -152,7 +146,7 @@ public class NetTree
             object key = entry.Key;
 
             List<uint> childAddr = new List<uint>(addressSoFar) { slot };
-            List<object> childChain = new List<object>(chainSoFar) { new DictKey(key) };
+            List<IAccessor> childChain = new List<IAccessor>(chainSoFar) { new DictAccessor(key) };
 
             string path = $"{string.Join(" > ", childAddr)} (key={key})";
             NetNode childNode = new NetNode(path, childAddr.ToArray(), entry.Value.GetHashCode());
@@ -165,7 +159,7 @@ public class NetTree
 
     private void WalkCollection(IEnumerable collection, Type elementType,
                                 NetNode parentNode, List<uint> addressSoFar,
-                                List<object> chainSoFar)
+                                List<IAccessor> chainSoFar)
     {
         bool isList = collection is IList;
         int index = 0;
@@ -173,7 +167,7 @@ public class NetTree
         foreach (object item in collection)
         {
             List<uint> childAddr = new List<uint>(addressSoFar) { (uint)index };
-            List<object> childChain = new List<object>(chainSoFar) { new ListIndex(index) };
+            List<IAccessor> childChain = new List<IAccessor>(chainSoFar) { new ListAccessor(index) };
 
             string path = string.Join(" > ", childAddr);
             NetNode childNode = new NetNode(path, childAddr.ToArray(), item.GetHashCode());
@@ -209,7 +203,7 @@ public class NetTree
 
     private static Type GetCollectionElementType(Type t)
     {
-        if (typeof(IDictionary).IsAssignableFrom(t)) 
+        if (typeof(IDictionary).IsAssignableFrom(t))
             return null;
 
         foreach (Type iface in t.GetInterfaces())
@@ -236,22 +230,17 @@ public class NetTree
 
     public object GetValue(params uint[] address)
     {
-        NetNode node = Get(address)
-            ?? throw new KeyNotFoundException(
-                   $"Address [{string.Join(",", address)}] not found.");
+        NetNode node = Get(address) ?? throw new KeyNotFoundException($"Address [{string.Join(",", address)}] not found.");
 
-
-
-        return node.GetValue();
+        return node.GetValue(_baseObject);
     }
 
     public void SetValue(object value, params uint[] address)
     {
-        NetNode node = Get(address)
-            ?? throw new KeyNotFoundException(
-                   $"Address [{string.Join(",", address)}] not found.");
-        node.SetValue(value);
+        NetNode node = Get(address) ?? throw new KeyNotFoundException($"Address [{string.Join(",", address)}] not found.");
+
+        node.SetValue(_baseObject, value);
     }
 
-    public void Print() => root?.Print();
+    public void Print() => root?.Print(_baseObject);
 }
