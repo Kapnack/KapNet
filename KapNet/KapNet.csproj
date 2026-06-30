@@ -44,6 +44,11 @@
   </ItemGroup>
   <ItemGroup />
   <ItemGroup>
+    <Compile Include="src\ConcurrentPool\ConcurrentPool.cs" />
+    <Compile Include="src\ConcurrentPool\IResettable.cs" />
+    <Compile Include="src\EventBus\EventBus.cs" />
+    <Compile Include="src\EventBus\IEvent.cs" />
+    <Compile Include="src\Harmony\RPCFactory.cs" />
     <Compile Include="src\NetAttribute.cs" />
     <Compile Include="src\NetNode.cs" />
     <Compile Include="src\NetTree.cs" />
@@ -76,6 +81,9 @@
     <Compile Include="src\UdpConnection.cs" />
   </ItemGroup>
   <ItemGroup>
+    <Reference Include="0Harmony, Version=2.4.2.0, Culture=neutral, processorArchitecture=MSIL">
+      <HintPath>..\packages\Lib.Harmony.2.4.2\lib\net48\0Harmony.dll</HintPath>
+    </Reference>
     <Reference Include="System" />
     <Reference Include="System.Buffers, Version=4.0.5.0, Culture=neutral, PublicKeyToken=cc7b13ffcd2ddd51, processorArchitecture=MSIL">
       <HintPath>..\packages\System.Buffers.4.6.1\lib\net462\System.Buffers.dll</HintPath>

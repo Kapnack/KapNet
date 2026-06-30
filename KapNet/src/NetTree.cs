@@ -1,15 +1,22 @@
+using ImageCampus.ToolBox.Services;
 using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Reflection;
 
-public class NetTree
+internal class NetTree : IService
 {
+    public bool IsPersistance => false;
+
     private object _baseObject = null;
     public NetNode root;
 
     const BindingFlags BINDINGS =
         BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance;
+
+    public NetTree()
+    {
+    }
 
     public static NetTree Build(object rootObject)
     {
@@ -227,6 +234,16 @@ public class NetTree
     }
 
     public NetNode Get(params uint[] address) => root?.Resolve(address);
+
+    public uint[] GetPath(object instance)
+    {
+        uint[] path = null;
+
+        if (!root.GetPath(instance, out path))
+            path = new uint[0];
+
+        return path;
+    }
 
     public object GetValue(params uint[] address)
     {

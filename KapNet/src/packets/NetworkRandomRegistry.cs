@@ -1,3 +1,4 @@
+using ImageCampus.ToolBox.Events;
 using ImageCampus.ToolBox.Services;
 using KapNet;
 using System;
@@ -47,7 +48,7 @@ namespace Network.Packets
 		public void SetSeed(long seed, int clientid, bool isServer) // ADDED isServer
 		{
 			_seed = seed;
-            NetBananaConsole.Log("set seed: " + seed + "for client id: " + clientid);
+            //NetBananaConsole.Log("set seed: " + seed + "for client id: " + clientid);
 
 			foreach (KeyValuePair<int, Client> item in NetworkService.Connections)
 			{
@@ -137,11 +138,9 @@ public byte[] DecryptPayload(NetworkPacket networkPacket)
 
           byte[] baseIV = BitConverter.GetBytes(ivLong);
           
-          // 2. Expand them to fit AES requirements
           byte[] Key = ExpandTo32Bytes(baseKey);
           byte[] IV = ExpandTo16Bytes(baseIV);
 
-          // Create an Aes object with the specified key and IV.
           using (Aes aesAlg = Aes.Create())
           {
              aesAlg.Key = Key;

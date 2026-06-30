@@ -1,4 +1,5 @@
-﻿using KapNet.src.packets;
+﻿using ImageCampus.ToolBox.Services;
+using KapNet.src.packets;
 using KapNet.src.time;
 using System;
 using System.Collections.Generic;
@@ -6,11 +7,12 @@ using System.Net;
 
 namespace KapNet.src
 {
-    public abstract class NetworkPeer<ClientKey> : IReceiveData, INetworkPeer
+    internal class NetworkPeer<ClientKey> : IReceiveData, INetworkPeer, IService
     {
         protected delegate void PacketTypeDelegate(NetworkPacket networkPacket);
         private delegate void SendPacketMetaDataDelegate(NetworkPacket networkPacket, ref byte[] data);
         private delegate bool RecivePacketMetaDataDelegate(ref NetworkPacket networkPacket, byte[] data);
+        public bool IsPersistance => false;
 
         protected const uint NULL_NETWORKPEER = 0;
         public uint NetworkID = NULL_NETWORKPEER;
@@ -32,6 +34,8 @@ namespace KapNet.src
 
         private NetTree netTree;
         protected Dictionary<PacketType, PacketTypeDelegate> PacketTypeStrategy { get; private set; }
+
+
         private Dictionary<PacketMetaData, SendPacketMetaDataDelegate> sendingMetaDataStrategy;
         private Dictionary<PacketMetaData, RecivePacketMetaDataDelegate> recivingMetaDataStrategy;
 

@@ -84,6 +84,10 @@ public sealed class DictAccessor : IAccessor
 
     public object GetValue(object container)
     {
+        //TODO: Replace Object boxing for interation of List of values and
+        // Dictionary<int, float> a = new Dictionary<int, float>();
+        // a.Values
+
         if (container is IDictionary dict)
             return dict[Key];
 
@@ -146,6 +150,20 @@ public class NetNode
             return child.Resolve(address, ++depth);
 
         return null;
+    }
+
+    //TODO: This should be optimize in the future.
+    public bool GetPath(object instance, out uint[] path)
+    {
+        if (!_hashCode.Equals(instance.GetHashCode()))
+            foreach (KeyValuePair<uint, NetNode> child in _children)
+            {
+                if (child.Value.GetPath(instance, out path))
+                    return true;
+            }
+
+        path = Address;
+        return false;
     }
 
     public object GetValue(object rootRef)

@@ -12,6 +12,7 @@ namespace KapNet
         vDouble,
         vLong,
         vUInt,
+        Method,
         Ping,
         ServerShutDown,
         ConnectToServer
