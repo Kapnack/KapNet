@@ -79,33 +79,49 @@ public sealed class ListAccessor : IAccessor
 
 public sealed class DictAccessor : IAccessor
 {
-    public readonly object Key;
-    public DictAccessor(object key) => Key = key;
+    public readonly int Index;
+    public DictAccessor(int index) => Index = index;
 
     public object GetValue(object container)
     {
-        //TODO: Replace Object boxing for interation of List of values and
-        // Dictionary<int, float> a = new Dictionary<int, float>();
-        // a.Values
+        if (!(container is IDictionary dict))
+            throw new InvalidOperationException($"Expected IDictionary, got '{container.GetType()}'.");
 
-        if (container is IDictionary dict)
-            return dict[Key];
+        if (Index < 0 || Index >= dict.Count)
+            throw new IndexOutOfRangeException($"Index {Index} is out of range for dictionary of size {dict.Count}.");
 
-        throw new InvalidOperationException($"Expected IDictionary, got '{container.GetType()}'.");
+        object[] values = new object[dict.Count];
+        dict.Values.CopyTo(values, 0);
+        return values[Index];
     }
 
     public void SetValue(object container, object value)
     {
-        if (container is IDictionary dict)
+        if (!(container is IDictionary dict))
+            throw new InvalidOperationException($"Expected IDictionary, got '{container.GetType()}'.");
+
+        if (Index < 0 || Index >= dict.Count)
+            throw new IndexOutOfRangeException($"Index {Index} is out of range for dictionary of size {dict.Count}.");
+
+        object[] keys = new object[dict.Count];
+        dict.Keys.CopyTo(keys, 0);
+        object key = keys[Index];
+
+        Type valueType = typeof(object);
+        Type dictType = dict.GetType();
+        foreach (Type iface in dictType.GetInterfaces())
         {
-            dict[Key] = value;
-            return;
+            if (iface.IsGenericType && iface.GetGenericTypeDefinition() == typeof(IDictionary<,>))
+            {
+                valueType = iface.GetGenericArguments()[1];
+                break;
+            }
         }
 
-        throw new InvalidOperationException($"Expected IDictionary, got '{container.GetType()}'.");
+        dict[key] = value == null ? null : Convert.ChangeType(value, valueType);
     }
 
-    public override string ToString() => $"[key:{Key}]";
+    public override string ToString() => $"[idx:{Index}]";
 }
 
 public class NetNode
