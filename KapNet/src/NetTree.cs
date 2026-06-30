@@ -147,17 +147,17 @@ internal class NetTree : IService
 
     private void WalkDictionary(IDictionary dict, Type valueType, NetNode parentNode, List<uint> addressSoFar, List<IAccessor> chainSoFar)
     {
-        uint slot = 0;
+        int slot = 0;
         foreach (DictionaryEntry entry in dict)
         {
             object key = entry.Key;
 
-            List<uint> childAddr = new List<uint>(addressSoFar) { slot };
-            List<IAccessor> childChain = new List<IAccessor>(chainSoFar) { new DictAccessor(key) };
+            List<uint> childAddr = new List<uint>(addressSoFar) { (uint)slot };
+            List<IAccessor> childChain = new List<IAccessor>(chainSoFar) { new DictAccessor(slot) };
 
             string path = $"{string.Join(" > ", childAddr)} (key={key})";
             NetNode childNode = new NetNode(path, childAddr.ToArray(), entry.Value.GetHashCode());
-            parentNode.AddChild(slot, childNode);
+            parentNode.AddChild((uint)slot, childNode);
 
             DispatchNode(entry.Value, valueType, childNode, childAddr, childChain);
             slot++;
