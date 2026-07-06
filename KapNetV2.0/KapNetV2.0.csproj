@@ -1,0 +1,103 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="15.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <Import Project="$(MSBuildExtensionsPath)\$(MSBuildToolsVersion)\Microsoft.Common.props" Condition="Exists('$(MSBuildExtensionsPath)\$(MSBuildToolsVersion)\Microsoft.Common.props')" />
+  <PropertyGroup>
+    <Configuration Condition=" '$(Configuration)' == '' ">Debug</Configuration>
+    <Platform Condition=" '$(Platform)' == '' ">AnyCPU</Platform>
+    <ProjectGuid>{E492F784-AEF7-4252-B6AE-AE7F441D5AAD}</ProjectGuid>
+    <OutputType>Library</OutputType>
+    <RootNamespace>KapNetV2._0</RootNamespace>
+    <AssemblyName>KapNetV2.0</AssemblyName>
+    <TargetFrameworkVersion>v4.7.2</TargetFrameworkVersion>
+    <FileAlignment>512</FileAlignment>
+    <AutoGenerateBindingRedirects>true</AutoGenerateBindingRedirects>
+    <Deterministic>true</Deterministic>
+  </PropertyGroup>
+  <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|AnyCPU' ">
+    <PlatformTarget>AnyCPU</PlatformTarget>
+    <DebugSymbols>true</DebugSymbols>
+    <DebugType>full</DebugType>
+    <Optimize>false</Optimize>
+    <OutputPath>bin\Debug\</OutputPath>
+    <DefineConstants>DEBUG;TRACE</DefineConstants>
+    <ErrorReport>prompt</ErrorReport>
+    <WarningLevel>4</WarningLevel>
+  </PropertyGroup>
+  <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Release|AnyCPU' ">
+    <PlatformTarget>AnyCPU</PlatformTarget>
+    <DebugType>pdbonly</DebugType>
+    <Optimize>true</Optimize>
+    <OutputPath>bin\Release\</OutputPath>
+    <DefineConstants>TRACE</DefineConstants>
+    <ErrorReport>prompt</ErrorReport>
+    <WarningLevel>4</WarningLevel>
+  </PropertyGroup>
+  <PropertyGroup>
+    <StartupObject />
+  </PropertyGroup>
+  <ItemGroup>
+    <None Include="App.config" />
+    <None Include="packages.config" />
+  </ItemGroup>
+  <ItemGroup>
+    <Compile Include="src\CheckSumFactory\CheckSumFactory.cs" />
+    <Compile Include="src\ClientJoinEvent.cs" />
+    <Compile Include="src\Concurrentpool\ConcurrentPool.cs" />
+    <Compile Include="src\Concurrentpool\IResettable.cs" />
+    <Compile Include="src\Connections\ConnectionHandler.cs" />
+    <Compile Include="src\Connections\ConnectionRole.cs" />
+    <Compile Include="src\Connections\HandShackeRecievedEvent.cs" />
+    <Compile Include="src\Connections\MatchMakerConnection.cs" />
+    <Compile Include="src\Connections\MatchMakerRequester.cs" />
+    <Compile Include="src\Connections\ServerAssignedEvent.cs" />
+    <Compile Include="src\Eventbus\EventBus.cs" />
+    <Compile Include="src\Eventbus\IEvent.cs" />
+    <Compile Include="src\Harmony\RPCFactory.cs" />
+    <Compile Include="src\Interface\IInitiable.cs" />
+    <Compile Include="src\Interface\IReceiveData.cs" />
+    <Compile Include="src\Interface\ITickable.cs" />
+    <Compile Include="src\KapNet.cs" />
+    <Compile Include="src\NetNode\NetAttribute.cs" />
+    <Compile Include="src\NetNode\NetNode.cs" />
+    <Compile Include="src\NetNode\NetTree.cs" />
+    <Compile Include="src\Packet\NetworkPacket.cs" />
+    <Compile Include="src\Packet\NetworkRandomNumberGenerator.cs" />
+    <Compile Include="src\Packet\PackectsUsedRegistry.cs" />
+    <Compile Include="src\Packet\PacketAwaitingResponce.cs" />
+    <Compile Include="src\Packet\PacketEncryptor.cs" />
+    <Compile Include="src\Packet\PacketFactory.cs" />
+    <Compile Include="src\Packet\PacketLayout.cs" />
+    <Compile Include="src\Packet\PacketMetaData.cs" />
+    <Compile Include="src\Packet\PacketReader.cs" />
+    <Compile Include="src\Packet\PacketResender.cs" />
+    <Compile Include="src\Packet\PacketType.cs" />
+    <Compile Include="src\Packet\PacketUtility.cs" />
+    <Compile Include="src\Packet\PacketWriter.cs" />
+    <Compile Include="src\ServerDisconectedEvent.cs" />
+    <Compile Include="src\Serviceprovider\IDataService.cs" />
+    <Compile Include="src\Serviceprovider\IService.cs" />
+    <Compile Include="src\Serviceprovider\ServiceProvider.cs" />
+    <Compile Include="src\Taskscheduler\TaskScheduler.cs" />
+    <Compile Include="src\UdpConnection.cs" />
+  </ItemGroup>
+  <ItemGroup>
+    <Reference Include="0Harmony, Version=2.3.3.0, Culture=neutral, processorArchitecture=MSIL">
+      <HintPath>..\packages\Lib.Harmony.2.3.3\lib\net472\0Harmony.dll</HintPath>
+    </Reference>
+    <Reference Include="System" />
+    <Reference Include="System.Buffers, Version=4.0.5.0, Culture=neutral, PublicKeyToken=cc7b13ffcd2ddd51, processorArchitecture=MSIL">
+      <HintPath>..\packages\System.Buffers.4.6.1\lib\net462\System.Buffers.dll</HintPath>
+    </Reference>
+    <Reference Include="System.Memory, Version=4.0.5.0, Culture=neutral, PublicKeyToken=cc7b13ffcd2ddd51, processorArchitecture=MSIL">
+      <HintPath>..\packages\System.Memory.4.6.3\lib\net462\System.Memory.dll</HintPath>
+    </Reference>
+    <Reference Include="System.Numerics" />
+    <Reference Include="System.Numerics.Vectors, Version=4.1.6.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a, processorArchitecture=MSIL">
+      <HintPath>..\packages\System.Numerics.Vectors.4.6.1\lib\net462\System.Numerics.Vectors.dll</HintPath>
+    </Reference>
+    <Reference Include="System.Runtime.CompilerServices.Unsafe, Version=6.0.3.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a, processorArchitecture=MSIL">
+      <HintPath>..\packages\System.Runtime.CompilerServices.Unsafe.6.1.2\lib\net462\System.Runtime.CompilerServices.Unsafe.dll</HintPath>
+    </Reference>
+  </ItemGroup>
+  <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
+</Project>

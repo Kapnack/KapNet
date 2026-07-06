@@ -1,0 +1,33 @@
+namespace Net
+{
+    public enum PacketType : int
+    {
+        Handshake,
+        Acknowledgement,
+        ClientJoined,
+        ClientLeft,
+        vSByte,
+        vByte,
+        vShort,
+        vUShort,
+        vInt,
+        vUInt,
+        vLong,
+        vULong,
+        vfloat,
+        vDouble,
+        vDecimal,
+        vBool,
+        vChar,
+        vString,
+        vSetNull,
+        Method,
+        Ping,
+        ServerShutDown,
+        ConnectToServer,
+        ServerRegister,   
+        ServerDeregister, 
+        RequestMatch,     
+        ServerAssigned    
+    }
+}
